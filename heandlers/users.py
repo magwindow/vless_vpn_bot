@@ -1,3 +1,5 @@
+import os
+import requests
 from database.models import add_user_if_not_exists
 from aiogram import Router, F
 from aiogram.filters import CommandStart
@@ -73,7 +75,19 @@ async def connect_command(message: Message):
 @router_users.message(F.text == 'ℹ️ Статус')
 async def status_command(message: Message):
     await message.delete()
-    await message.answer_photo(FSInputFile('C:\\py_project\\vless_vpn_bot\\images\\status.jpg'),
+    url = "https://raw.githubusercontent.com/magwindow/vless_vpn_bot/refs/heads/master/images/status.jpg"
+    local_path = "status.jpg"
+
+    # Проверяем, существует ли файл
+    if not os.path.exists(local_path):
+        response = requests.get(url)
+        with open(local_path, "wb") as file:
+            file.write(response.content)
+
+    # Теперь отправляем локальный файл
+    photo = FSInputFile(local_path)
+
+    await message.answer_photo(photo,
                                caption="Доступ:☑️<b>Пробный период</b>\n"
                                        "├ Осталось дней: <b>9</b>\n"
                                        "└ Активна до: <b>07.05.2025 09:30</b>\n\n"
