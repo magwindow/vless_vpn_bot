@@ -1,4 +1,4 @@
-from sqlalchemy import String, BigInteger, DateTime, select
+from sqlalchemy import String, BigInteger, DateTime, select, Column, Integer, Boolean
 from sqlalchemy.ext.asyncio import AsyncAttrs, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from datetime import datetime, timedelta
@@ -48,6 +48,18 @@ class VlessKey(Base):
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     protocol: Mapped[str] = mapped_column(String(50), default="vless", nullable=False)
     flow: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, nullable=False)
+    is_active = Column(Boolean, default=True)
+    max_uses = Column(Integer, default=1)
+    uses = Column(Integer, default=0)
+    total_gb = Column(Integer, nullable=False)
+    expiry_days = Column(Integer, nullable=False)
 
 
 # Подключение к БД и фабрика сессий

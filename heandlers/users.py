@@ -1,19 +1,24 @@
 import logging
 import os
 import requests
-from database.models import add_user_if_not_exists, User, async_session
+from database.models import add_user_if_not_exists, User, async_session, VlessKey, PromoCode
 from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, FSInputFile
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
 from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from keyboards.inline_keyboard import tariff_keyboard, help_keyboard, connect_keyboard, back
 from keyboards.reply_menu_keyboard import menu
+from vless.vless_service import add_client
 
 logging.basicConfig(level=logging.INFO)
 
 BOT_USERNAME = os.getenv('BOT_USERNAME')
+INBOUND_ID = 1
+FLOW = "xtls-rprx-vision"
 
 router_users: Router = Router()
 
@@ -97,19 +102,60 @@ async def help_command(message: Message):
 @router_users.message(F.text == '⚡️ Подключиться!')
 async def connect_command(message: Message):
     await message.delete()
-    await message.answer(
-        text="Доступ к VPN в 2 шага:\n\n"
-             "1️⃣ <b>Скачать</b> - для скачивания приложения\n"
-             "2️⃣ <b>Подключить</b> - для добавления подписки\n\n"
-             "Настроить VPN вручную:\n"
-             '<a href="https://telegra.ph/Podklyuchenie-v2RayTun-Android-11-09">Инструкция для Android</a>\n'
-             '<a href="https://telegra.ph/Podklyuchenie-v2raytun-iOS-11-09">Инструкция для iOS/MacOS</a>\n'
-             '<a href="https://telegra.ph/Nastrojka-VPN-PK-Windows-08-08">Инструкция для Windows</a>\n\n'
-             "Ссылка для ручного подключения\n"
-             "Тапните чтобы скопировать в буфер обмена ↓",
-        reply_markup=await connect_keyboard(),
-        disable_web_page_preview=True
-    )
+
+    user_id = message.from_user.id
+
+    async with async_session() as session:
+        # Проверяем, есть ли у пользователя уже активный триал ключ
+        existing_key = await session.execute(select(VlessKey).where(VlessKey.chat_id == user_id))
+        existing_key = existing_key.scalar_one_or_none()
+
+        if existing_key:
+            # Если ключ уже есть, показываем его
+            await message.answer(
+                text="Доступ к VPN в 2 шага:\n\n"
+                     "1️⃣ <b>Скачать</b> - для скачивания приложения\n"
+                     "2️⃣ <b>Подключить</b> - для добавления подписки\n\n"
+                     "Настроить VPN вручную:\n"
+                     '<a href="https://telegra.ph/Podklyuchenie-v2RayTun-Android-11-09">Инструкция для Android</a>\n'
+                     '<a href="https://telegra.ph/Podklyuchenie-v2raytun-iOS-11-09">Инструкция для iOS/MacOS</a>\n'
+                     '<a href="https://telegra.ph/Nastrojka-VPN-PK-Windows-08-08">Инструкция для Windows</a>\n\n'
+                     "Ссылка для ручного подключения\n"
+                     "Тапните чтобы скопировать в буфер обмена ↓\n\n"
+                     f"<code>{existing_key.access_url}</code>\n"
+                     f"⏳ Действителен до: {existing_key.expires_at.strftime('%Y-%m-%d')}",
+                reply_markup=await connect_keyboard(),
+                disable_web_page_preview=True
+            )
+        else:
+            # Если ключа нет, генерируем новый триал ключ
+            try:
+                key = await add_client(
+                    inbound_id=INBOUND_ID,
+                    total_gb=5,
+                    expiry_days=3,
+                    flow=FLOW,
+                    chat_id=user_id,
+                    user_name=message.from_user.username
+                )
+
+                await message.answer(
+                    text="Доступ к VPN в 2 шага:\n\n"
+                         "1️⃣ <b>Скачать</b> - для скачивания приложения\n"
+                         "2️⃣ <b>Подключить</b> - для добавления подписки\n\n"
+                         "Настроить VPN вручную:\n"
+                         '<a href="https://telegra.ph/Podklyuchenie-v2RayTun-Android-11-09">Инструкция для Android</a>\n'
+                         '<a href="https://telegra.ph/Podklyuchenie-v2raytun-iOS-11-09">Инструкция для iOS/MacOS</a>\n'
+                         '<a href="https://telegra.ph/Nastrojka-VPN-PK-Windows-08-08">Инструкция для Windows</a>\n\n'
+                         "Ссылка для ручного подключения\n"
+                         "Тапните чтобы скопировать в буфер обмена ↓\n\n"
+                         f"<code>{key.access_url}</code>\n"
+                         f"⏳ Действителен до: {key.expires_at.strftime('%Y-%m-%d')}",
+                    reply_markup=await connect_keyboard(),
+                    disable_web_page_preview=True
+                )
+            except Exception as e:
+                await message.answer(f"Ошибка: {str(e)}")
 
 
 # Статус
@@ -157,3 +203,61 @@ async def status_command(message: Message):
         reply_markup=await back(),
         disable_web_page_preview=True
     )
+
+
+class PromoState(StatesGroup):
+    waiting_for_code = State()
+
+
+@router_users.message(F.text == "🎁 Ввести промокод")
+async def start_promo(message: Message, state: FSMContext):
+    await message.answer("Введите ваш промокод:")
+    await state.set_state(PromoState.waiting_for_code)
+
+
+@router_users.message(PromoState.waiting_for_code)
+async def check_promo(message: Message, state: FSMContext):
+    promo_input = message.text.strip()
+    user_id = message.from_user.id
+
+    async with async_session() as session:
+        promo = await session.execute(select(PromoCode).where(PromoCode.code == promo_input))
+        promo = promo.scalar_one_or_none()
+
+        if promo and promo.is_active and promo.uses < promo.max_uses:
+            # Проверка: нет ли уже триала
+            existing_key = await session.execute(select(VlessKey).where(VlessKey.chat_id == user_id))
+            existing_key = existing_key.scalar_one_or_none()
+
+            if existing_key:
+                await message.answer("❗️У вас уже есть активный VPN ключ.")
+            else:
+                # Генерируем триал с параметрами из промокода
+                key = await add_client(
+                    inbound_id=INBOUND_ID,
+                    total_gb=promo.total_gb,
+                    expiry_days=promo.expiry_days,
+                    flow=FLOW,
+                    chat_id=user_id,
+                    user_name=message.from_user.username
+                )
+
+                # Обновляем использование промокода
+                promo.uses += 1
+                if promo.uses >= promo.max_uses:
+                    promo.is_active = False
+
+                await session.commit()
+
+                await message.answer(
+                    text=f"✅ Ваш пробный период был активирован!\n\n"
+                         f"🎁 Трафик: {promo.total_gb} ГБ\n"
+                         f"⏳ Действует {promo.expiry_days} дней\n\n"
+                         f"<code>{key.access_url}</code>\n"
+                         f"Действует до {key.expires_at.strftime('%Y-%m-%d')}",
+                    disable_web_page_preview=True
+                )
+        else:
+            await message.answer("❌ Промокод недействителен или уже использован.")
+
+    await state.clear()
