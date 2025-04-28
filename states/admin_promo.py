@@ -51,10 +51,11 @@ async def promo_days_entered(message: Message, state: FSMContext):
 
     await state.update_data(expiry_days=int(message.text))
     data = await state.get_data()
+    print(data)
 
     async with async_session() as session:
         # Проверка на уникальность промокода
-        existing = await session.execute(select(PromoCode).where(PromoCode.code == data['code']))
+        existing = await session.execute(select(PromoCode).filter_by(code=data['code']))
         if existing.scalar_one_or_none():
             await message.answer("❗️ Такой промокод уже существует.")
             await state.clear()

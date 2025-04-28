@@ -1,6 +1,6 @@
-from sqlalchemy import String, BigInteger, DateTime, select, Column, Integer, Boolean
+from sqlalchemy import String, BigInteger, DateTime, select, Column, Integer, Boolean, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncAttrs, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from datetime import datetime, timedelta
 from typing import Optional
 import os
@@ -49,6 +49,9 @@ class VlessKey(Base):
     protocol: Mapped[str] = mapped_column(String(50), default="vless", nullable=False)
     flow: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    promo_code_id = Column(Integer, ForeignKey('promo_codes.id'), nullable=True)
+    promo_code = relationship('PromoCode', back_populates='vless_keys')
+
 
 class PromoCode(Base):
     __tablename__ = "promo_codes"
@@ -60,6 +63,8 @@ class PromoCode(Base):
     uses = Column(Integer, default=0)
     total_gb = Column(Integer, nullable=False)
     expiry_days = Column(Integer, nullable=False)
+
+    vless_keys = relationship("VlessKey", back_populates="promo_code")
 
 
 # Подключение к БД и фабрика сессий
