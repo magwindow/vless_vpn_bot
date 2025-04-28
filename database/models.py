@@ -1,10 +1,9 @@
-from sqlalchemy import String, BigInteger, DateTime, select, Column
+from sqlalchemy import String, BigInteger, DateTime, select
 from sqlalchemy.ext.asyncio import AsyncAttrs, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 import os
-
-# Загрузка переменных окружения
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,31 +16,38 @@ class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 
-# Пример модели пользователя
+# Модель пользователя
 class User(Base):
     __tablename__ = 'users'
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    tg_username: Mapped[str] = mapped_column(String(255), unique=True, nullable=True)
-    full_name = Column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    referrer_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    is_paid: Mapped[bool] = mapped_column(default=False)
+    tg_username: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
+    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    trial_end_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Новое поле для подсчёта рефералов
+    referral_count: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
+# Модель ключа
 class VlessKey(Base):
     __tablename__ = 'vless_keys'
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    key_id: Mapped[str] = mapped_column(String(255))
-    uuid: Mapped[str] = mapped_column(String(255))  # UUID клиента
-    access_url: Mapped[str] = mapped_column(String(512))  # ссылка для подключения
-    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=True)  # Telegram chat id
-    user_name: Mapped[str] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    key_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    uuid: Mapped[str] = mapped_column(String(255), nullable=False)
+    access_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    chat_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    user_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
-    total_limit_gb: Mapped[float] = mapped_column(default=0.0)  # лимит
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)  # срок действия
-    protocol: Mapped[str] = mapped_column(String(50), default="vless")  # на всякий случай
-    flow: Mapped[str] = mapped_column(String(255), nullable=True)  # flow типа xtls-rprx-vision
+    total_limit_gb: Mapped[float] = mapped_column(default=0.0, nullable=False)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    protocol: Mapped[str] = mapped_column(String(50), default="vless", nullable=False)
+    flow: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
 
 # Подключение к БД и фабрика сессий
@@ -49,16 +55,28 @@ engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 
-async def add_user_if_not_exists(user_id: int, username: str = None, full_name: str = None):
+# Добавление пользователя
+async def add_user_if_not_exists(user_id: int, ref_id: Optional[int] = None, username: Optional[str] = None,
+                                 full_name: Optional[str] = None, is_paid: bool = False, referral_count: int = 0):
     async with async_session() as session:
         async with session.begin():
             result = await session.execute(select(User).filter_by(id=user_id))
             user = result.scalar_one_or_none()
             if not user:
-                new_user = User(id=user_id, tg_username=username, full_name=full_name)
+                trial_end = datetime.utcnow() + timedelta(days=3)
+                new_user = User(
+                    id=user_id,
+                    referrer_id=ref_id,
+                    tg_username=username,
+                    full_name=full_name,
+                    trial_end_date=trial_end,
+                    is_paid=is_paid,
+                    referral_count=referral_count
+                )
                 session.add(new_user)
 
 
+# Инициализация БД
 async def init_models():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
