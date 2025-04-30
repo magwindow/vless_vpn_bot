@@ -1,24 +1,11 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-async def main_keyboard():
-    keyboard_builder = InlineKeyboardBuilder()
-    keyboard_builder.button(text='Быстрая инструкция 📖', callback_data='manual')
-    keyboard_builder.button(text='Получить ключ 🔑', callback_data='trial')
-    keyboard_builder.button(text='Тарифы 🔐', callback_data='traffic')
-    keyboard_builder.button(text='Мои ключи 🧩', callback_data='my_keys')
-    keyboard_builder.button(text="💬 Техподдержка", url="https://t.me/vlessvpn24_support")
-    keyboard_builder.button(text='➕Пригласить друга', callback_data='invite_friend')
-
-    keyboard_builder.adjust(1, 2, 2)
-    return keyboard_builder.as_markup()
-
-
 async def tariff_keyboard():
     kb = InlineKeyboardBuilder()
-    kb.button(text="✅ 1 месяц", callback_data="month")
-    kb.button(text="🔥 3 месяца", callback_data="three_month")
-    kb.button(text="🚀 6 месяцев", callback_data="six_month")
+    kb.button(text="✅ 1 месяц", callback_data="tariff_month")
+    kb.button(text="🔥 3 месяца", callback_data="tariff_three_month")
+    kb.button(text="🚀 6 месяцев", callback_data="tariff_six_month")
     kb.button(text='Назад', callback_data='back_main')
     kb.adjust(1)
     return kb.as_markup()
@@ -31,12 +18,19 @@ async def back():
     return kb.as_markup()
 
 
-async def paid_keyboard():
+async def paid_keyboard(tariff_key: str):
     kb = InlineKeyboardBuilder()
-    kb.button(text="Оплатить!", url="https://yookassa.com")
-    kb.button(text="Оплатить криптовалютой!", url="https://crypto.com")
+    kb.button(text="💳 Оплатить картой", callback_data=f"pay_{tariff_key}")
+    kb.button(text="💰 Криптовалюта", callback_data=f"crypto_{tariff_key}")
     kb.button(text='Назад', callback_data='back_main')
     kb.adjust(1)
+    return kb.as_markup()
+
+
+async def check_pay():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Проверить оплату", callback_data="check_payment")
+    kb.button(text='Назад', callback_data='back_main')
     return kb.as_markup()
 
 

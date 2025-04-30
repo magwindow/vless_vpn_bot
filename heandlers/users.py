@@ -106,42 +106,47 @@ async def connect_command(message: Message):
     user_id = message.from_user.id
 
     async with async_session() as session:
-        # Проверяем, есть ли у пользователя уже активный триал ключ
-        existing_key = await session.execute(select(VlessKey).where(VlessKey.chat_id == user_id))
-        existing_key = existing_key.scalar_one_or_none()
+        # Получаем все активные ключи пользователя
+        result = await session.execute(
+            select(VlessKey)
+            .where(
+                VlessKey.chat_id == user_id,
+                VlessKey.expires_at > datetime.utcnow()
+            )
+            .order_by(VlessKey.expires_at.desc())
+        )
+        active_keys = result.scalars().all()
 
-        if existing_key:
-            # Если ключ уже есть, показываем его
-            promo_info = ""
-            if existing_key.promo_code:
-                promo_info = f"\nИспользованный промокод: {existing_key.promo_code.code}"
+        if active_keys:
+            msg = "🔑 <b>Ваши активные VPN-ключи:</b>\n\n"
+
+            for i, key in enumerate(active_keys, start=1):
+                promo_info = f"\nПромокод: {key.promo_code.code}" if key.promo_code else ""
+                msg += (
+                    f"<b>{i}.</b>\n"
+                    f"<code>{key.access_url}</code>\n"
+                    f"⏳ Действителен до: {key.expires_at.strftime('%d-%m-%Y')}{promo_info}\n\n"
+                )
+
+            msg += (
+                "Настроить VPN вручную:\n"
+                '<a href="https://telegra.ph/Podklyuchenie-v2RayTun-Android-11-09">Android</a> | '
+                '<a href="https://telegra.ph/Podklyuchenie-v2raytun-iOS-11-09">iOS/MacOS</a> | '
+                '<a href="https://telegra.ph/Nastrojka-VPN-PK-Windows-08-08">Windows</a>'
+            )
 
             await message.answer(
-                text="Доступ к VPN в 2 шага:\n\n"
-                     "1️⃣ <b>Скачать</b> - для скачивания приложения\n"
-                     "2️⃣ <b>Подключить</b> - для добавления подписки\n\n"
-                     "Настроить VPN вручную:\n"
-                     '<a href="https://telegra.ph/Podklyuchenie-v2RayTun-Android-11-09">Инструкция для Android</a>\n'
-                     '<a href="https://telegra.ph/Podklyuchenie-v2raytun-iOS-11-09">Инструкция для iOS/MacOS</a>\n'
-                     '<a href="https://telegra.ph/Nastrojka-VPN-PK-Windows-08-08">Инструкция для Windows</a>\n\n'
-                     "Ссылка для ручного подключения\n"
-                     "Тапните чтобы скопировать в буфер обмена ↓\n\n"
-                     f"<code>{existing_key.access_url}</code>\n"
-                     f"⏳ Действителен до: {existing_key.expires_at.strftime('%d-%m-%Y')}{promo_info}",
+                msg,
                 reply_markup=await connect_keyboard(),
                 disable_web_page_preview=True
             )
         else:
             await message.answer(
-                text="Доступ к VPN в 2 шага:\n\n"
-                     "1️⃣ <b>Скачать</b> - для скачивания приложения\n"
-                     "2️⃣ <b>Подключить</b> - для добавления подписки\n\n"
-                     "Настроить VPN вручную:\n"
-                     '<a href="https://telegra.ph/Podklyuchenie-v2RayTun-Android-11-09">Инструкция для Android</a>\n'
-                     '<a href="https://telegra.ph/Podklyuchenie-v2raytun-iOS-11-09">Инструкция для iOS/MacOS</a>\n'
-                     '<a href="https://telegra.ph/Nastrojka-VPN-PK-Windows-08-08">Инструкция для Windows</a>\n\n'
-                     "Пожалуйста, введите промо-код в чате бота или выберете тариф,"
-                     " чтобы здесь отобразился ваш ключ 🔑",
+                text="У вас нет активных VPN-ключей 😔\n\n"
+                     "Чтобы получить доступ:\n"
+                     "- введите промокод\n"
+                     "- или выберите тариф\n\n"
+                     "После этого здесь отобразятся ваши ключи 🔑",
                 reply_markup=await connect_keyboard(),
                 disable_web_page_preview=True
             )

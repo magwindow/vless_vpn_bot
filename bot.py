@@ -7,7 +7,6 @@ from aiogram.client.bot import DefaultBotProperties
 
 from callback_query.callback_menu import router_call
 from callback_query.callback_payments import tariff_router
-from callback_query.get_vless import vless_router
 from heandlers.users import router_users
 from database.models import init_models
 from middlewares.register_user import RegisterUserMiddleware
@@ -43,7 +42,6 @@ async def main():
     dp.include_router(router_users)
     dp.include_router(router_admin)
     dp.include_router(router_call)
-    dp.include_router(vless_router)
     dp.include_router(tariff_router)
 
     # Подключаем события старта/остановки

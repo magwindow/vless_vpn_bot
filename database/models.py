@@ -67,6 +67,16 @@ class PromoCode(Base):
     vless_keys = relationship("VlessKey", back_populates="promo_code")
 
 
+class PaymentRecord(Base):
+    __tablename__ = 'payments'
+
+    id = Column(Integer, primary_key=True)
+    payment_id = Column(String, unique=True)
+    user_id = Column(BigInteger)
+    tariff_key = Column(String)
+    is_paid = Column(Boolean, default=False)
+
+
 # Подключение к БД и фабрика сессий
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
